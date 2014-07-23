@@ -178,21 +178,21 @@ fun displayBrackets colors (brackets : p) : xbody =
 						</xml>
 					      | _ => <xml><b>This should not happen</b></xml>)
       | _ => <xml><b>This should not happen</b></xml> (* COMPILER ISSUE: NOT ABLE TO USE ERROR HERE *)
-(*
+
 fun f p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
 	      None => <xml>no parse</xml>
 	    | Some (_,p,_,_,(i,_)) => <xml><span style={STYLE "font-size: 5em"}>{displayBrackets colors p}</span></xml>
-*)
 
+(*
 fun f p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
 	      None => <xml>no parse</xml>
 	    | Some (_,p,_,_,(i,_)) =>
 	      case p of
 		  Str i => <xml>{[i]}</xml>
 		| _ => <xml>no good parse</xml>
-
+*)
 fun main s : transaction page =
-    return <xml><body>{f test4 "test" s}</body></xml>
+    return <xml><body>{f brackets "s" s}</body></xml>
 
 
 (* EXAMPLE http://127.0.0.1:8081/Test/main/%28%28%29%28%29%28%28%28%28%29%29%29%28%29%28%29%28%29%29%29%28%28%29%29%29%28 *)
