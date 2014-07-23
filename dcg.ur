@@ -52,23 +52,45 @@ fun freshen (fresh : int) (a : p) =
 
 datatype either a b = Left of a | Right of b
 datatype rule = Rule of (int * p * list (either string (string * p)))
+	      | RuleStrFrom of list char (* charset *)
+	      | RuleStrExcept of list char (* exclusion charset *)
 con goal = string * p
 con dcg = list (string * list rule)
 
 fun freshenRule (fresh : int) (r : rule) : rule =
     case r of
-	Rule (i, p, l) => Rule (i, freshen fresh p, List.mp (fn e => case (e : either string (string * p)) of
+	RuleStrFrom charset => RuleStrFrom charset
+      | RuleStrExcept charset => RuleStrExcept charset
+      | Rule (i, p, l) => Rule (i, freshen fresh p, List.mp (fn e => case (e : either string (string * p)) of
 									 Left x => Left x
 								       | Right y => Right (y.1, freshen fresh y.2)) l)
-
+(*
 fun vars' (r : rule) : int = case r of Rule (vars, _, _) => vars
 fun head' (r : rule) : p = case r of Rule (_, head, _) => head
 fun body' (r : rule) : list (either string goal) = case r of Rule (_, _, body) => body
-
+*)
 fun stroccurs (needle : string) (haystack : string) (index : int) =
     if strlen haystack < index + strlen needle
     then False
     else eq needle (substring haystack index (strlen needle))
+
+fun breakFrom (test : char -> bool) (str : string) (index : int) : string * int =
+    let
+	fun breakIndex (i : int) =
+	    if strlenGe str (index + i + 1) && test (strsub str (index + i))
+	    then breakIndex (i + 1)
+	    else i
+    in
+	(substring str index (breakIndex 0), index + (breakIndex 0))
+    end
+(*
+fun breakTest (s : string) : transaction page =
+    let
+	val a = (breakFrom isdigit "abc123456789asdfasdfasdfafsdwer" 3)
+    in
+	return <xml><body>{[a.1]}</body></xml>
+    end
+*)
 
 fun runDCG (fresh : int) (sub : substitution) (prg : dcg) (goalp : goal) (input : int * string) (choices : int) : option (int * p * substitution * int * (int * string)) =
     case List.assoc goalp.1 prg of
@@ -80,11 +102,20 @@ fun runDCG (fresh : int) (sub : substitution) (prg : dcg) (goalp : goal) (input 
 		fun loop (n : int) (rules : list rule) : option (int * p * substitution * int * (int * string)) =
 		    case rules of
 			[] => None
-		      | rule :: rules => case unify sub (head' rule) p of
-					     Some (result, sub) => (case runGoals (fresh + vars' rule) sub prg (body' rule) input result of
-									Some (fresh, result, sub, input) => Some (fresh, result, sub, n, input)
-								      | None => loop (n+1) rules)
-					   | None => loop (n+1) rules
+		      | (RuleStrFrom charset) :: rules => (case breakFrom (fn c => List.exists (eq c) charset) input.2 input.1 of
+							       (frag, index) => case unify sub (Str frag) p of
+										    Some (result, sub) => Some (fresh, result, sub, n, (index, input.2))
+										  | None => loop (n+1) rules)
+		      | (RuleStrExcept charset) :: rules => (case breakFrom (fn c => not (List.exists (eq c) charset)) input.2 input.1 of
+								 (frag, index) => case unify sub (Str frag) p of
+										      Some (result, sub) => Some (fresh, result, sub, n, (index, input.2))
+										    | None => loop (n+1) rules)
+		      | (Rule (vars', head', body')) :: rules =>
+			case unify sub head' p of
+			    Some (result, sub) => (case runGoals (fresh + vars') sub prg (body') input result of
+						       Some (fresh, result, sub, input) => Some (fresh, result, sub, n, input)
+						     | None => loop (n+1) rules)
+			  | None => loop (n+1) rules
 	    in
 		loop choices (List.drop choices (List.mp (freshenRule fresh) rules))
 	    end
@@ -121,6 +152,7 @@ val test3 : dcg = ("foobar", (Rule (0, Functor ("foo", []), Left "foo" :: [])) :
                              []) ::
 		  ("test", (Rule (1, Var 0, Right ("foobar", Var 0) :: Left "-" :: Right ("foobar", Var 0) :: []) :: [])) ::
 		  []
+val test4 : dcg = ("test", (RuleStrFrom (#"0" :: #"1" :: #"2" :: #"3" :: #"4" :: #"5" :: #"6" :: #"7" :: #"8" :: #"9" :: [])) :: []) :: []
 
 (*
  * S ::= '(' S ')' S | epsilon
@@ -146,12 +178,21 @@ fun displayBrackets colors (brackets : p) : xbody =
 						</xml>
 					      | _ => <xml><b>This should not happen</b></xml>)
       | _ => <xml><b>This should not happen</b></xml> (* COMPILER ISSUE: NOT ABLE TO USE ERROR HERE *)
-
+(*
 fun f p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
 	      None => <xml>no parse</xml>
 	    | Some (_,p,_,_,(i,_)) => <xml><span style={STYLE "font-size: 5em"}>{displayBrackets colors p}</span></xml>
+*)
+
+fun f p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
+	      None => <xml>no parse</xml>
+	    | Some (_,p,_,_,(i,_)) =>
+	      case p of
+		  Str i => <xml>{[i]}</xml>
+		| _ => <xml>no good parse</xml>
 
 fun main s : transaction page =
-    return <xml><body>{f brackets "s" s}</body></xml>
+    return <xml><body>{f test4 "test" s}</body></xml>
 
-(* EXAMPLE http://127.0.0.0:8081/Dcg/main/%28%28%29%28%29%28%28%28%28%29%29%29%28%29%28%29%28%29%29%29%28%28%29%29%29%28 *)
+
+(* EXAMPLE http://127.0.0.1:8081/Test/main/%28%28%29%28%29%28%28%28%28%29%29%29%28%29%28%29%28%29%29%29%28%28%29%29%29%28 *)
