@@ -28,10 +28,29 @@
 %%
 %% TODO: Along with counting variable numbers create a phase that traverses the argument of the head and the arguments of the rule calls (Right) converting them to Ur terms
 
-test3(X) ---> test2(X), ['-'], test2(X).
+% EX4
+%
+% s(brack(X,Y)) ---> ['('], s(X), [')'], s(Y).
+% s(eps) ---> [].
+%
+% val s : dcg = ("s", Rule (2, Functor ("brack", Var 0 :: Var 1 :: []), Left "(" :: Right ("s", Var 0) :: Left ")" :: Right ("s", Var 1) :: []) :: Rule (0, Functor ("eps", []), []) :: []) :: []
+
+
+sum(add(A,B)) ---> prod(A), [+], sum(B).
+sum(sub(A,B)) ---> prod(A), [-], sum(B).
+sum(it(N)) ---> prod(N).
+
+prod(mul(A,B)) ---> val(A), [*], prod(B).
+prod(div(A,B)) ---> val(A), [/], prod(B).
+prod(it(N)) ---> val(N).
+
+val(num(N)) ---> num(N).
+val(exp(E)) ---> ['('], sum(E), [')'].
+
+
 
 translate_rule(Name, Clauses) -->
-    ['val '], [Name], [' : dcg = ('],
+    ['val '], [Name], ['Rule'], [' : dcg = ('],
       ['\"'], [Name], ['\"'], [', '],
       translate_rule_clauses(Clauses),
     [')'],[' :: '],['[]'], % Just one goal
@@ -44,37 +63,47 @@ translate_rule_clauses([Clause|Clauses]) -->
 
 translate_rule_clause((Head ---> Body)) -->
     { Head =.. [_, Argument] },
-    { Vars = 0 }, %% TODO: count variables
+    % { Vars = 0 }, %% TODO: count variables
     ['Rule ('],[Vars],[', '],
-        translate_argument(Argument),[', '],
-        translate_body(Body),
+        transform_functor(0/I, Argument),[', '],
+        translate_body(I/Vars, Body),
     [')'],[' :: '].
 
-translate_argument(Argument) -->
-    { var(Argument) }, {!},
-    { Argument = 'Var 0' },
-    [Argument].
-translate_argument(Argument) -->
-    { Argument =.. [Head|Params] },
-    { Params = [] }, %% NOT IMPLEMENTED YET
+transform_functor(I/J, V) -->
+    { var(V) }, {!},
+    { V = 'VARIABLE'(I) },
+    ['Var '],[I],
+    { J is I+1 }.
+transform_functor(I/I, 'VARIABLE'(N)) -->
+    ['Var '],[N].
+transform_functor(I/J, F) -->
+    { F =.. [Head|Params] },
     ['Functor ('],
-      quote(Head), [', '], ['[]'],
+      quote(Head), [', '],
+      transform_functors(I/J, Params),
     [')'].
+transform_functors(I/I, []) -->
+    ['[]'].
+transform_functors(I/K, [F|Fs]) -->
+    transform_functor(I/J, F),
+    [' :: '],
+    transform_functors(J/K, Fs).
 
-translate_body((Command,Body)) --> {!},
-    translate_command(Command),
-    [' :: '],translate_body(Body).
-translate_body(Command) -->
-    translate_command(Command),
+translate_body(I/K,(Command,Body)) --> {!},
+    translate_command(I/J,Command),
+    [' :: '],translate_body(J/K,Body).
+translate_body(I/I,[]) --> {!}, ['[]'].
+translate_body(I/J,Command) -->
+    translate_command(I/J,Command),
     [' :: '],['[]'].
 
-translate_command([S]) -->
+translate_command(I/I,[S]) -->
     ['Left '], quote(S).
-translate_command(R) -->
+translate_command(I/J,R) -->
     { R =.. [Rule, Arg] },
     ['Right '], ['('],
       quote(Rule),[', '],
-      [Arg],  %% TODO: handle more than just Var 0
+      transform_functor(I/J, Arg),
     [')'].
 
 quote(S) --> ['"'], [S], ['"'].
@@ -82,4 +111,19 @@ quote(S) --> ['"'], [S], ['"'].
 print_list([]).
 print_list([X|Xs]) :- write(X), print_list(Xs).
 
-:- findall((X ---> Y), ((X ---> Y), functor(X, test3, 1)), Z), translate_rule(test3, Z, Ur, []), print_list(Ur), nl.
+%%
+
+compile :-
+    setof(Rule, X^Y^((X ---> Y), functor(X, Rule, 1)), Z),
+    compile_rules(Z).
+
+compile_rules([]).
+compile_rules([Rule|Rules]) :-
+    compile_rule(Rule), compile_rules(Rules).
+
+compile_rule(Rule) :-
+    findall((X ---> Y), ((X ---> Y), functor(X, Rule, 1)), Z),
+    translate_rule(Rule, Z, Ur, []),
+    print_list(Ur), nl.
+
+:- compile.

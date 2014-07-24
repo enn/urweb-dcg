@@ -159,10 +159,31 @@ val test4 : dcg = ("test", (RuleStrFrom (#"0" :: #"1" :: #"2" :: #"3" :: #"4" ::
  * % s(brack(X,Y)) --> [(], s(X), [)], s(Y)
  * % s(eps) --> []
  *)
-val brackets : dcg = ("s", (Rule (2, Functor ("brack", Var 0 :: Var 1 :: []),
-				  (Left "(" :: Right ("s", Var 0) :: Left ")" :: Right ("s", Var 1) :: [])))
-			       :: (Rule (0, Functor ("eps",[]), []))
-			       :: []) :: []
+val brackets : dcg = ("s", Rule (2, Functor ("brack", Var 0 :: Var 1 :: []), Left "(" :: Right ("s", Var 0) :: Left ")" :: Right ("s", Var 1) :: []) :: Rule (0, Functor ("eps", []), []) :: []) :: []
+
+
+val numRule = ("num", RuleStrFrom (#"0" :: #"1" :: #"2" :: #"3" :: #"4" :: #"5" :: #"6" :: #"7" :: #"8" :: #"9" :: []) :: [])
+val sumRule = ("sum", Rule (2, Functor ("add", Var 0 :: Var 1 :: []), Right ("prod", Var 0) :: Left "+" :: Right ("sum", Var 1) :: []) :: Rule (2, Functor ("sub", Var 0 :: Var 1 :: []), Right ("prod", Var 0) :: Left "-" :: Right ("sum", Var 1) :: []) :: Rule (1, Functor ("it", Var 0 :: []), Right ("prod", Var 0) :: []) :: [])
+val prodRule = ("prod", Rule (2, Functor ("mul", Var 0 :: Var 1 :: []), Right ("val", Var 0) :: Left "*" :: Right ("prod", Var 1) :: []) :: Rule (2, Functor ("div", Var 0 :: Var 1 :: []), Right ("val", Var 0) :: Left "/" :: Right ("prod", Var 1) :: []) :: Rule (1, Functor ("it", Var 0 :: []), Right ("val", Var 0) :: []) :: [])
+val valRule = ("val", Rule (1, Functor ("num", Var 0 :: []), Right ("num", Var 0) :: []) :: Rule (1, Functor ("exp", Var 0 :: []), Left "(" :: Right ("sum", Var 0) :: Left ")" :: []) :: [])
+
+val arithmeticRules : dcg = numRule :: prodRule :: sumRule :: valRule :: []
+
+fun displayArithmetic (arith : p) : xbody =
+    case arith of
+	Str s => <xml>{[s]}</xml>
+      | Functor ("it", i :: []) => displayArithmetic i
+      | Functor ("num", i :: []) => displayArithmetic i
+      | Functor ("exp", i :: []) => displayArithmetic i
+      | Functor (op, p :: q :: []) =>
+	<xml>
+	  <ul>
+	    <li>{[op]}</li>
+	    <li>{displayArithmetic p}</li>
+	    <li>{displayArithmetic q}</li>
+	  </ul>
+	</xml>
+      | _ => <xml><b>This should not happen</b></xml>
 
 val colors = (STYLE "color: red") :: (STYLE "color: orange") :: (STYLE "color: green") :: (STYLE "color: blue") :: (STYLE "color: indigo") :: (STYLE "color: violet") :: []
 
@@ -179,9 +200,13 @@ fun displayBrackets colors (brackets : p) : xbody =
 					      | _ => <xml><b>This should not happen</b></xml>)
       | _ => <xml><b>This should not happen</b></xml> (* COMPILER ISSUE: NOT ABLE TO USE ERROR HERE *)
 
-fun f p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
+fun g p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
 	      None => <xml>no parse</xml>
 	    | Some (_,p,_,_,(i,_)) => <xml><span style={STYLE "font-size: 5em"}>{displayBrackets colors p}</span></xml>
+
+fun f p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
+	      None => <xml>no parse</xml>
+	    | Some (_,p',_,_,(i,_)) => <xml>{displayArithmetic p'}</xml>
 
 (*
 fun f p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
@@ -191,8 +216,34 @@ fun f p q s = case runDCG 1 [] p (q, Var 0) (0,s) 0 of
 		  Str i => <xml>{[i]}</xml>
 		| _ => <xml>no good parse</xml>
 *)
+
 fun main s : transaction page =
-    return <xml><body>{f brackets "s" s}</body></xml>
+    return <xml><body>
+      
+      <a link={parens "((())()(((()))))(()(()(()(()))))(())(())"}>brackets</a>
+      
+      <form>
+	<textbox{#Text} value="1+2*3+4*(5+6)*7"/>
+	<submit action={moo}/>
+      </form>
+    
+    </body></xml>
+
+and moo s : transaction page =
+    return <xml><body>
+      <form>
+	<textbox{#Text}/>
+	<submit action={moo}/>
+	<hr/>
+      </form>
+	{f arithmeticRules "sum" s.Text}
+    </body></xml>
+
+and parens s : transaction page =
+    return <xml><body>
+      {g brackets "s" s}
+    </body></xml>
+    
 
 
-(* EXAMPLE http://127.0.0.1:8081/Test/main/%28%28%29%28%29%28%28%28%28%29%29%29%28%29%28%29%28%29%29%29%28%28%29%29%29%28 *)
+(* EXAMPLE http://127.0.0.1:8080/Dcg/main/8 *)
